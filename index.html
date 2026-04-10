@@ -13,88 +13,96 @@
   <div id="app">
     <header>
       <div class="header-side">
-        <button id="btn-info" class="icon-btn" aria-label="Info">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <button id="btn-back" class="icon-btn hidden" aria-label="Back">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
       </div>
       <div class="header-title">
-        <h1>СҮЗЛЕ</h1>
+        <h1 id="header-text">СҮЗЛЕ</h1>
       </div>
       <div class="header-side header-right">
-        <button id="btn-challenge" class="icon-btn" aria-label="Challenge" title="Дуска биремә">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-        </button>
-        <button id="btn-leaderboard" class="icon-btn" aria-label="Leaderboard" title="Рейтинг">
+        <button id="btn-leaderboard" class="icon-btn hidden" aria-label="Leaderboard">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/><path d="M17 3H7l1 9c0 2.2 1.8 4 4 4s4-1.8 4-4l1-9z"/></svg>
         </button>
-        <button id="btn-stats" class="icon-btn" aria-label="Stats">
+        <button id="btn-stats" class="icon-btn hidden" aria-label="Stats">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Streak banner -->
-    <div id="streak-banner" class="streak-banner hidden">
-      <span class="streak-fire">🔥</span>
-      <span id="streak-count">0</span> көн эзлекле!
+    <!-- Home Screen -->
+    <div id="screen-home" class="screen">
+      <div class="home-hero">
+        <div class="home-logo">СҮЗЛЕ</div>
+        <p class="home-sub">татарча сүз уйны</p>
+      </div>
+      <div class="mode-list">
+        <button class="mode-card" data-mode="daily">
+          <span class="mode-icon">🌅</span>
+          <div class="mode-info">
+            <div class="mode-name">Көнлек сүз</div>
+            <div class="mode-desc">Көн саен яңа сүз — барысы бер сүзне табалар</div>
+          </div>
+          <span id="daily-check" class="mode-badge hidden">✅</span>
+        </button>
+        <button class="mode-card" data-mode="endless">
+          <span class="mode-icon">♾️</span>
+          <div class="mode-info">
+            <div class="mode-name">Чиксез</div>
+            <div class="mode-desc">Туктамый уйна — ничә сүз таба аласың?</div>
+          </div>
+          <span id="endless-best" class="mode-badge hidden"></span>
+        </button>
+        <button class="mode-card" data-mode="speed">
+          <span class="mode-icon">⚡</span>
+          <div class="mode-info">
+            <div class="mode-name">Тиз уен</div>
+            <div class="mode-desc">5 минут — ничә сүз таба аласың?</div>
+          </div>
+          <span id="speed-best" class="mode-badge hidden"></span>
+        </button>
+        <button class="mode-card" data-mode="duel">
+          <span class="mode-icon">🎯</span>
+          <div class="mode-info">
+            <div class="mode-name">Дуэль</div>
+            <div class="mode-desc">Дусың белән ярыш — кем тизрәк таба?</div>
+          </div>
+        </button>
+        <button class="mode-card" data-mode="challenge">
+          <span class="mode-icon">⚔️</span>
+          <div class="mode-info">
+            <div class="mode-name">Дуска биремә</div>
+            <div class="mode-desc">Дусыңа сүз бир — ул табарга тырышсын</div>
+          </div>
+        </button>
+      </div>
     </div>
 
-    <main>
-      <div id="board"></div>
-    </main>
-
-    <div id="keyboard"></div>
+    <!-- Game Screen -->
+    <div id="screen-game" class="screen hidden">
+      <div id="game-status-bar" class="game-status-bar hidden">
+        <div id="status-timer" class="status-item hidden"><span class="status-icon">⏱</span> <span id="timer-text">5:00</span></div>
+        <div id="status-score" class="status-item hidden"><span class="status-icon">✅</span> <span id="score-text">0</span></div>
+        <div id="status-streak" class="status-item hidden"><span class="status-icon">🔥</span> <span id="streak-text">0</span></div>
+      </div>
+      <main>
+        <div id="board"></div>
+      </main>
+      <div id="keyboard"></div>
+    </div>
 
     <!-- Toast -->
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Info Modal -->
+    <!-- Info/How to play Modal -->
     <div id="modal-info" class="modal hidden">
       <div class="modal-content">
         <button class="modal-close">&times;</button>
         <h2>Ничек уйнарга?</h2>
         <p>Сүзне 6 тапкыр эчендә табыгыз. Һәр тапкыр 5 хәрефле татарча сүз языгыз.</p>
-        <div class="example">
-          <div class="mini-row">
-            <div class="mini-tile correct">К</div>
-            <div class="mini-tile">И</div>
-            <div class="mini-tile">Т</div>
-            <div class="mini-tile">А</div>
-            <div class="mini-tile">П</div>
-          </div>
-          <p><strong>К</strong> — дөрес урында (яшел)</p>
-        </div>
-        <div class="example">
-          <div class="mini-row">
-            <div class="mini-tile">Б</div>
-            <div class="mini-tile present">А</div>
-            <div class="mini-tile">Л</div>
-            <div class="mini-tile">Ы</div>
-            <div class="mini-tile">К</div>
-          </div>
-          <p><strong>А</strong> — сүздә бар, ләкин башка урында (сары)</p>
-        </div>
-        <div class="example">
-          <div class="mini-row">
-            <div class="mini-tile">С</div>
-            <div class="mini-tile">А</div>
-            <div class="mini-tile">Б</div>
-            <div class="mini-tile absent">Ы</div>
-            <div class="mini-tile">Н</div>
-          </div>
-          <p><strong>Ы</strong> — сүздә юк (соры)</p>
-        </div>
-        <div class="info-achievements">
-          <h3>🏆 Казанышлар</h3>
-          <div class="achievement-list">
-            <div class="ach-item"><span class="ach-icon">⭐</span> Беренче җиңү</div>
-            <div class="ach-item"><span class="ach-icon">🔥</span> 7 көн эзлекле</div>
-            <div class="ach-item"><span class="ach-icon">🧠</span> 1 тапкырдан табу</div>
-            <div class="ach-item"><span class="ach-icon">💪</span> 30 көн эзлекле</div>
-            <div class="ach-item"><span class="ach-icon">👑</span> 100 уен</div>
-          </div>
-        </div>
-        <p class="info-footer">Көн саен яңа сүз!</p>
+        <div class="example"><div class="mini-row"><div class="mini-tile correct">К</div><div class="mini-tile">И</div><div class="mini-tile">Т</div><div class="mini-tile">А</div><div class="mini-tile">П</div></div><p><strong>К</strong> — дөрес урында (яшел)</p></div>
+        <div class="example"><div class="mini-row"><div class="mini-tile">Б</div><div class="mini-tile present">А</div><div class="mini-tile">Л</div><div class="mini-tile">Ы</div><div class="mini-tile">К</div></div><p><strong>А</strong> — сүздә бар, ләкин башка урында (сары)</p></div>
+        <div class="example"><div class="mini-row"><div class="mini-tile">С</div><div class="mini-tile">А</div><div class="mini-tile">Б</div><div class="mini-tile absent">Ы</div><div class="mini-tile">Н</div></div><p><strong>Ы</strong> — сүздә юк (соры)</p></div>
       </div>
     </div>
 
@@ -102,12 +110,10 @@
     <div id="modal-stats" class="modal hidden">
       <div class="modal-content">
         <button class="modal-close">&times;</button>
-        <h2>Статистика</h2>
-        <div id="stats-numbers" class="stats-numbers"></div>
-        <div id="stats-bars" class="stats-bars"></div>
-        <div id="achievements-display" class="achievements-display"></div>
-        <div id="stats-timer" class="stats-timer"></div>
+        <h2 id="stats-title">Статистика</h2>
+        <div id="stats-body"></div>
         <button id="btn-share" class="share-btn hidden">📤 Уртаклашу</button>
+        <button id="btn-play-again" class="share-btn hidden" style="margin-top:8px;background:var(--accent)">🔄 Тагын уйнарга</button>
       </div>
     </div>
 
@@ -116,9 +122,7 @@
       <div class="modal-content">
         <button class="modal-close">&times;</button>
         <h2>🏆 Рейтинг</h2>
-        <div id="leaderboard-list" class="leaderboard-list">
-          <div class="loader">Йөкләнә...</div>
-        </div>
+        <div id="leaderboard-list" class="leaderboard-list"><div class="loader">Йөкләнә...</div></div>
       </div>
     </div>
 
@@ -133,6 +137,20 @@
           <input type="text" id="challenge-username" class="challenge-input" placeholder="@username">
           <button id="btn-send-challenge" class="share-btn">Җибәрү ➤</button>
           <div id="challenge-status" class="challenge-status"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Duel Modal -->
+    <div id="modal-duel" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close">&times;</button>
+        <h2>🎯 Дуэль</h2>
+        <p>Дусыңызны чакырыгыз — кем тизрәк таба?</p>
+        <div class="challenge-form">
+          <input type="text" id="duel-username" class="challenge-input" placeholder="@username">
+          <button id="btn-send-duel" class="share-btn">Чакыру ➤</button>
+          <div id="duel-status" class="challenge-status"></div>
         </div>
       </div>
     </div>

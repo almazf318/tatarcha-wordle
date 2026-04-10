@@ -1,11 +1,10 @@
 (() => {
   const WORD_LENGTH = 5;
   const MAX_GUESSES = 6;
-  const STORAGE_KEY = "suzle_state";
-  const STATS_KEY = "suzle_stats";
   const SUPABASE_URL = "https://nntwkjevyadhxqtvoxed.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5udHdramV2eWFkaHhxdHZveGVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4MTk3MzMsImV4cCI6MjA5MTM5NTczM30.JJBixtUV6sCYKznkZbRSnfL4b9ddW4LD2Q8frUU1Z6Q";
   const BOT_TOKEN = "8425194478:AAH93I9QN-kQtfic0NIkM1AozpBSfatcmhU";
+  const SCORE_MAP = { 1: 100, 2: 80, 3: 60, 4: 40, 5: 20, 6: 10 };
 
   const KB_ROWS = [
     ["ә","й","ц","у","к","е","н","г","ш","щ","з","х","һ"],
@@ -13,199 +12,107 @@
     ["ENTER","я","ч","с","м","и","т","ү","б","ө","ю","җ","⌫"],
   ];
 
-  const ACHIEVEMENTS = [
-    { id: "first_win", icon: "⭐", name: "Беренче җиңү", check: s => s.games_won >= 1 },
-    { id: "streak_7", icon: "🔥", name: "7 көн эзлекле", check: s => s.max_streak >= 7 },
-    { id: "genius", icon: "🧠", name: "1 тапкырдан табу", check: s => s.genius },
-    { id: "streak_30", icon: "💪", name: "30 көн эзлекле", check: s => s.max_streak >= 30 },
-    { id: "veteran", icon: "👑", name: "100 уен", check: s => s.games_played >= 100 },
-  ];
-
-  // Scoring: fewer attempts = more points
-  const SCORE_MAP = { 1: 100, 2: 80, 3: 60, 4: 40, 5: 20, 6: 10 };
-
-  // Telegram WebApp
+  // Telegram
   const tg = window.Telegram?.WebApp;
   let tgUser = null;
-  if (tg) {
-    tg.ready();
-    tg.expand();
-    tgUser = tg.initDataUnsafe?.user;
-  }
+  if (tg) { tg.ready(); tg.expand(); tgUser = tg.initDataUnsafe?.user; }
 
-  // Check for challenge mode
+  // URL params
   const urlParams = new URLSearchParams(window.location.search);
   const challengeId = urlParams.get("challenge");
-  let challengeWord = null;
-  let isChallenge = false;
+  const duelId = urlParams.get("duel");
 
-  // Day number
-  function getDayNumber() {
-    const start = new Date(2026, 3, 11);
-    const now = new Date();
-    return Math.floor((now.getTime() - start.getTime()) / 86400000);
-  }
-
-  function getTodayWord() {
-    const day = getDayNumber();
-    return ANSWERS[((day % ANSWERS.length) + ANSWERS.length) % ANSWERS.length];
-  }
-
-  // State
-  let targetWord = getTodayWord();
+  // ============ State ============
+  let currentMode = null; // 'daily','endless','speed','challenge','duel'
+  let targetWord = "";
   let guesses = [];
   let currentGuess = "";
   let gameOver = false;
   let currentRow = 0;
-  const letterStatus = {};
+  let letterStatus = {};
+  let usedWords = new Set();
+  let modeWordsSolved = 0;
+  let speedTimer = null;
+  let speedTimeLeft = 300;
+  let duelStartTime = 0;
 
-  // DOM refs
-  const boardEl = document.getElementById("board");
-  const kbEl = document.getElementById("keyboard");
-  const toastEl = document.getElementById("toast");
-  const modalInfo = document.getElementById("modal-info");
-  const modalStats = document.getElementById("modal-stats");
-  const modalLB = document.getElementById("modal-leaderboard");
-  const modalChallenge = document.getElementById("modal-challenge");
-  const streakBanner = document.getElementById("streak-banner");
-  const streakCount = document.getElementById("streak-count");
+  // DOM
+  const $ = id => document.getElementById(id);
+  const boardEl = $("board");
+  const kbEl = $("keyboard");
+  const toastEl = $("toast");
+  const screenHome = $("screen-home");
+  const screenGame = $("screen-game");
+  const btnBack = $("btn-back");
+  const btnStats = $("btn-stats");
+  const btnLB = $("btn-leaderboard");
+  const headerText = $("header-text");
+  const statusBar = $("game-status-bar");
+  const statusTimer = $("status-timer");
+  const statusScore = $("status-score");
+  const statusStreak = $("status-streak");
 
-  // ============ Supabase helpers ============
+  // ============ Supabase ============
   async function sbFetch(path, opts = {}) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": opts.prefer || "return=minimal",
-        ...(opts.headers || {}),
-      },
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": opts.prefer || "return=minimal", ...(opts.headers || {}) },
       method: opts.method || "GET",
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
-    if (opts.prefer === "return=representation" || opts.method === "GET" || !opts.method) {
-      try { return await res.json(); } catch { return null; }
-    }
+    if (opts.prefer === "return=representation" || opts.method === "GET" || !opts.method) { try { return await res.json(); } catch { return null; } }
     return null;
   }
 
   async function syncPlayer() {
     if (!tgUser) return;
-    await sbFetch("wordle_players", {
-      method: "POST",
-      prefer: "return=minimal",
-      headers: { "Prefer": "resolution=merge-duplicates" },
-      body: {
-        tg_id: tgUser.id,
-        username: tgUser.username || "",
-        first_name: tgUser.first_name || "",
-      },
-    });
+    await sbFetch("wordle_players", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates" }, body: { tg_id: tgUser.id, username: tgUser.username || "", first_name: tgUser.first_name || "" } });
   }
 
-  async function saveResult(won, attempts) {
-    if (!tgUser) return;
-    const day = isChallenge ? -1 : getDayNumber();
-    const score = won ? (SCORE_MAP[attempts] || 10) : 0;
-
-    // Save result
-    if (!isChallenge) {
-      await sbFetch("wordle_results", {
-        method: "POST",
-        headers: { "Prefer": "resolution=merge-duplicates" },
-        body: { tg_id: tgUser.id, day_number: day, attempts: won ? attempts : MAX_GUESSES, won },
-      });
-    }
-
-    // Update player stats
-    const stats = getStats();
-    await sbFetch(`wordle_players?tg_id=eq.${tgUser.id}`, {
-      method: "PATCH",
-      body: {
-        score: (await getPlayerScore()) + score,
-        streak: stats.streak,
-        max_streak: stats.maxStreak,
-        games_played: stats.played,
-        games_won: stats.won,
-      },
-    });
-
-    // Update challenge if applicable
-    if (isChallenge && challengeId) {
-      await sbFetch(`wordle_challenges?id=eq.${challengeId}`, {
-        method: "PATCH",
-        body: { attempts: won ? attempts : MAX_GUESSES, won, status: "completed", to_tg_id: tgUser.id },
-      });
-    }
-  }
-
-  async function getPlayerScore() {
-    if (!tgUser) return 0;
-    const data = await sbFetch(`wordle_players?tg_id=eq.${tgUser.id}&select=score`);
-    return data?.[0]?.score || 0;
-  }
-
-  async function getLeaderboard() {
-    return await sbFetch("wordle_players?select=tg_id,username,first_name,score,streak,max_streak&order=score.desc&limit=20");
+  // ============ Word Selection ============
+  function getDayNumber() { return Math.floor((Date.now() - new Date(2026, 3, 11).getTime()) / 86400000); }
+  function getDailyWord() { const d = getDayNumber(); return ANSWERS[((d % ANSWERS.length) + ANSWERS.length) % ANSWERS.length]; }
+  function getRandomWord() {
+    const available = ANSWERS.filter((_, i) => !usedWords.has(i));
+    if (available.length === 0) { usedWords.clear(); return ANSWERS[Math.floor(Math.random() * ANSWERS.length)]; }
+    const word = available[Math.floor(Math.random() * available.length)];
+    usedWords.add(ANSWERS.indexOf(word));
+    return word;
   }
 
   // ============ Board ============
   function createBoard() {
     boardEl.innerHTML = "";
     for (let r = 0; r < MAX_GUESSES; r++) {
-      const row = document.createElement("div");
-      row.className = "row";
-      row.id = `row-${r}`;
-      for (let c = 0; c < WORD_LENGTH; c++) {
-        const tile = document.createElement("div");
-        tile.className = "tile";
-        tile.id = `tile-${r}-${c}`;
-        row.appendChild(tile);
-      }
+      const row = document.createElement("div"); row.className = "row"; row.id = `row-${r}`;
+      for (let c = 0; c < WORD_LENGTH; c++) { const t = document.createElement("div"); t.className = "tile"; t.id = `tile-${r}-${c}`; row.appendChild(t); }
       boardEl.appendChild(row);
     }
   }
 
   function updateBoard() {
     for (let r = 0; r < guesses.length; r++) {
-      const result = evaluate(guesses[r]);
-      for (let c = 0; c < WORD_LENGTH; c++) {
-        const tile = document.getElementById(`tile-${r}-${c}`);
-        tile.textContent = guesses[r][c].toUpperCase();
-        tile.className = `tile ${result[c]}`;
-      }
+      const res = evaluate(guesses[r]);
+      for (let c = 0; c < WORD_LENGTH; c++) { const t = $(`tile-${r}-${c}`); t.textContent = guesses[r][c].toUpperCase(); t.className = `tile ${res[c]}`; }
     }
     if (!gameOver && currentRow < MAX_GUESSES) {
       for (let c = 0; c < WORD_LENGTH; c++) {
-        const tile = document.getElementById(`tile-${currentRow}-${c}`);
-        if (c < currentGuess.length) {
-          tile.textContent = currentGuess[c].toUpperCase();
-          tile.className = "tile filled";
-        } else {
-          tile.textContent = "";
-          tile.className = "tile";
-        }
+        const t = $(`tile-${currentRow}-${c}`);
+        if (c < currentGuess.length) { t.textContent = currentGuess[c].toUpperCase(); t.className = "tile filled"; }
+        else { t.textContent = ""; t.className = "tile"; }
       }
     }
   }
 
-  // ============ Evaluation ============
+  function resetBoard() {
+    guesses = []; currentGuess = ""; gameOver = false; currentRow = 0; letterStatus = {};
+    createBoard(); createKeyboard();
+  }
+
   function evaluate(guess) {
     const result = Array(WORD_LENGTH).fill("absent");
-    const targetArr = [...targetWord];
-    const guessArr = [...guess];
-    for (let i = 0; i < WORD_LENGTH; i++) {
-      if (guessArr[i] === targetArr[i]) {
-        result[i] = "correct";
-        targetArr[i] = null;
-        guessArr[i] = null;
-      }
-    }
-    for (let i = 0; i < WORD_LENGTH; i++) {
-      if (guessArr[i] === null) continue;
-      const idx = targetArr.indexOf(guessArr[i]);
-      if (idx !== -1) { result[i] = "present"; targetArr[idx] = null; }
-    }
+    const ta = [...targetWord], ga = [...guess];
+    for (let i = 0; i < WORD_LENGTH; i++) { if (ga[i] === ta[i]) { result[i] = "correct"; ta[i] = null; ga[i] = null; } }
+    for (let i = 0; i < WORD_LENGTH; i++) { if (!ga[i]) continue; const idx = ta.indexOf(ga[i]); if (idx !== -1) { result[i] = "present"; ta[idx] = null; } }
     return result;
   }
 
@@ -213,12 +120,9 @@
   function createKeyboard() {
     kbEl.innerHTML = "";
     for (const row of KB_ROWS) {
-      const rowEl = document.createElement("div");
-      rowEl.className = "kb-row";
+      const rowEl = document.createElement("div"); rowEl.className = "kb-row";
       for (const key of row) {
-        const btn = document.createElement("button");
-        btn.className = "key";
-        btn.dataset.key = key;
+        const btn = document.createElement("button"); btn.className = "key"; btn.dataset.key = key;
         if (key === "ENTER") { btn.textContent = "↵"; btn.classList.add("wide"); }
         else if (key === "⌫") { btn.textContent = "⌫"; btn.classList.add("wide"); }
         else btn.textContent = key.toUpperCase();
@@ -232,19 +136,16 @@
   function updateKeyboard() {
     kbEl.querySelectorAll(".key").forEach(btn => {
       const k = btn.dataset.key;
-      if (letterStatus[k]) {
-        btn.classList.remove("correct", "present", "absent");
-        btn.classList.add(letterStatus[k]);
-      }
+      if (letterStatus[k]) { btn.classList.remove("correct","present","absent"); btn.classList.add(letterStatus[k]); }
     });
   }
 
   function updateLetterStatuses(guess, result) {
     for (let i = 0; i < WORD_LENGTH; i++) {
-      const letter = guess[i], status = result[i], current = letterStatus[letter];
-      if (status === "correct") letterStatus[letter] = "correct";
-      else if (status === "present" && current !== "correct") letterStatus[letter] = "present";
-      else if (!current) letterStatus[letter] = "absent";
+      const l = guess[i], s = result[i], c = letterStatus[l];
+      if (s === "correct") letterStatus[l] = "correct";
+      else if (s === "present" && c !== "correct") letterStatus[l] = "present";
+      else if (!c) letterStatus[l] = "absent";
     }
   }
 
@@ -254,10 +155,7 @@
     if (key === "⌫" || key === "Backspace") { currentGuess = currentGuess.slice(0, -1); updateBoard(); return; }
     if (key === "ENTER" || key === "Enter") { submitGuess(); return; }
     const letter = key.toLowerCase();
-    if (currentGuess.length < WORD_LENGTH && /^[а-яәөүҗңһёa-z]$/i.test(letter)) {
-      currentGuess += letter;
-      updateBoard();
-    }
+    if (currentGuess.length < WORD_LENGTH && /^[а-яәөүҗңһё]$/i.test(letter)) { currentGuess += letter; updateBoard(); }
   }
 
   function submitGuess() {
@@ -270,313 +168,329 @@
 
     revealRow(currentRow, result, () => {
       updateKeyboard();
-      if (currentGuess === targetWord) {
-        gameOver = true;
-        winAnimation(currentRow);
-        const stats = getStats();
-        stats.played++;
-        stats.won++;
-        stats.streak++;
-        stats.maxStreak = Math.max(stats.maxStreak, stats.streak);
-        stats.dist[guesses.length - 1]++;
-        if (guesses.length === 1) stats.genius = true;
-        setStats(stats);
-        saveResult(true, guesses.length);
-        setTimeout(() => {
-          showToast(getWinMessage());
-          setTimeout(() => showStatsModal(), 1500);
-        }, 400);
-      } else if (guesses.length >= MAX_GUESSES) {
-        gameOver = true;
-        const stats = getStats();
-        stats.played++;
-        stats.streak = 0;
-        setStats(stats);
-        saveResult(false, MAX_GUESSES);
-        setTimeout(() => {
-          showToast(targetWord.toUpperCase(), 3000);
-          setTimeout(() => showStatsModal(), 1500);
-        }, 400);
-      }
-      currentRow++;
-      currentGuess = "";
-      saveState();
+      const won = currentGuess === targetWord;
+      if (won) { gameOver = true; winAnimation(currentRow); onWin(guesses.length); }
+      else if (guesses.length >= MAX_GUESSES) { gameOver = true; onLose(); }
+      currentRow++; currentGuess = "";
+      if (currentMode === "daily") saveDailyState();
     });
   }
 
-  function getWinMessage() {
-    return ["Бик яхшы!", "Мөгаллим!", "Шәп!", "Булдыра аласың!", "Афәрин!", "Зур!"][Math.min(guesses.length - 1, 5)];
+  // ============ Mode-specific win/lose ============
+  function onWin(attempts) {
+    if (currentMode === "daily") { saveDailyStats(true, attempts); saveResultToServer(true, attempts); setTimeout(() => showDailyStats(), 1800); }
+    else if (currentMode === "challenge") { saveChallengeResult(true, attempts); setTimeout(() => showSimpleResult("Афәрин! 🎉", `${attempts}/6 тапкырда таптыгыз`), 1800); }
+    else if (currentMode === "speed") { modeWordsSolved++; updateStatusBar(); setTimeout(() => { resetBoard(); targetWord = getRandomWord(); }, 800); }
+    else if (currentMode === "endless") { modeWordsSolved++; updateStatusBar(); setTimeout(() => { resetBoard(); targetWord = getRandomWord(); }, 1200); }
+    else if (currentMode === "duel") { const elapsed = Date.now() - duelStartTime; saveDuelResult(true, attempts, elapsed); setTimeout(() => showSimpleResult("Таптыгыз! 🎯", `${attempts}/6 — ${(elapsed/1000).toFixed(1)}с`), 1800); }
+  }
+
+  function onLose() {
+    if (currentMode === "daily") { saveDailyStats(false, MAX_GUESSES); saveResultToServer(false, MAX_GUESSES); setTimeout(() => { showToast(targetWord.toUpperCase(), 2500); showDailyStats(); }, 500); }
+    else if (currentMode === "challenge") { saveChallengeResult(false, MAX_GUESSES); setTimeout(() => showSimpleResult("Сүз: " + targetWord.toUpperCase(), "Киләсе тапкырда!"), 1000); }
+    else if (currentMode === "speed") { setTimeout(() => { showToast(targetWord.toUpperCase(), 1500); resetBoard(); targetWord = getRandomWord(); }, 500); }
+    else if (currentMode === "endless") { endEndless(); }
+    else if (currentMode === "duel") { const elapsed = Date.now() - duelStartTime; saveDuelResult(false, MAX_GUESSES, elapsed); setTimeout(() => showSimpleResult("Сүз: " + targetWord.toUpperCase(), `Табылмады — ${(elapsed/1000).toFixed(1)}с`), 1000); }
   }
 
   // ============ Animations ============
-  function revealRow(rowIdx, result, onComplete) {
-    const tiles = [];
-    for (let c = 0; c < WORD_LENGTH; c++) tiles.push(document.getElementById(`tile-${rowIdx}-${c}`));
-    tiles.forEach((tile, i) => {
-      setTimeout(() => {
-        tile.classList.add("reveal");
-        setTimeout(() => {
-          tile.className = `tile ${result[i]}`;
-          tile.textContent = guesses[rowIdx][i].toUpperCase();
-        }, 250);
-        if (i === WORD_LENGTH - 1) setTimeout(onComplete, 300);
-      }, i * 300);
-    });
+  function revealRow(rowIdx, result, cb) {
+    const tiles = []; for (let c = 0; c < WORD_LENGTH; c++) tiles.push($(`tile-${rowIdx}-${c}`));
+    tiles.forEach((t, i) => { setTimeout(() => { t.classList.add("reveal"); setTimeout(() => { t.className = `tile ${result[i]}`; t.textContent = guesses[rowIdx][i].toUpperCase(); }, 250); if (i === WORD_LENGTH - 1) setTimeout(cb, 300); }, i * 250); });
   }
-
-  function shakeRow() {
-    const row = document.getElementById(`row-${currentRow}`);
-    row.classList.add("shake");
-    setTimeout(() => row.classList.remove("shake"), 400);
-  }
-
-  function winAnimation(rowIdx) {
-    for (let c = 0; c < WORD_LENGTH; c++) {
-      setTimeout(() => document.getElementById(`tile-${rowIdx}-${c}`).classList.add("win"), c * 100 + 1500);
-    }
-  }
+  function shakeRow() { const r = $(`row-${currentRow}`); r.classList.add("shake"); setTimeout(() => r.classList.remove("shake"), 400); }
+  function winAnimation(rowIdx) { for (let c = 0; c < WORD_LENGTH; c++) setTimeout(() => $(`tile-${rowIdx}-${c}`).classList.add("win"), c * 100 + 1200); }
 
   // ============ Toast ============
-  let toastTimeout;
-  function showToast(msg, dur = 1500) {
-    toastEl.textContent = msg;
-    toastEl.classList.remove("hidden");
-    clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => toastEl.classList.add("hidden"), dur);
+  let toastTO;
+  function showToast(msg, dur = 1500) { toastEl.textContent = msg; toastEl.classList.remove("hidden"); clearTimeout(toastTO); toastTO = setTimeout(() => toastEl.classList.add("hidden"), dur); }
+
+  // ============ Screen Management ============
+  function showHome() {
+    screenHome.classList.remove("hidden"); screenGame.classList.add("hidden");
+    btnBack.classList.add("hidden"); btnStats.classList.add("hidden"); btnLB.classList.add("hidden");
+    headerText.textContent = "СҮЗЛЕ";
+    if (speedTimer) { clearInterval(speedTimer); speedTimer = null; }
+    updateHomeBadges();
   }
 
-  // ============ Stats ============
-  function getStats() {
-    const saved = localStorage.getItem(STATS_KEY);
-    if (saved) return JSON.parse(saved);
-    return { played: 0, won: 0, streak: 0, maxStreak: 0, dist: [0,0,0,0,0,0], genius: false };
+  function showGame(modeName) {
+    screenHome.classList.add("hidden"); screenGame.classList.remove("hidden");
+    btnBack.classList.remove("hidden");
+    headerText.textContent = modeName;
+    statusBar.classList.add("hidden"); statusTimer.classList.add("hidden"); statusScore.classList.add("hidden"); statusStreak.classList.add("hidden");
+    if (currentMode === "daily") { btnStats.classList.remove("hidden"); btnLB.classList.remove("hidden"); }
+    else if (currentMode === "speed" || currentMode === "endless") { btnLB.classList.remove("hidden"); }
   }
-  function setStats(s) { localStorage.setItem(STATS_KEY, JSON.stringify(s)); updateStreakBanner(); }
 
-  function updateStreakBanner() {
-    const stats = getStats();
-    if (stats.streak > 0) {
-      streakBanner.classList.remove("hidden");
-      streakCount.textContent = stats.streak;
-    } else {
-      streakBanner.classList.add("hidden");
+  function updateHomeBadges() {
+    const ds = getDailyStats();
+    const dc = $("daily-check");
+    const saved = localStorage.getItem("suzle_daily");
+    if (saved) { const s = JSON.parse(saved); if (s.day === getDayNumber() && s.gameOver) { dc.classList.remove("hidden"); } else dc.classList.add("hidden"); }
+
+    const eb = $("endless-best"); const ebv = parseInt(localStorage.getItem("suzle_endless_best") || "0");
+    if (ebv > 0) { eb.textContent = `🏆 ${ebv}`; eb.classList.remove("hidden"); } else eb.classList.add("hidden");
+
+    const sb = $("speed-best"); const sbv = parseInt(localStorage.getItem("suzle_speed_best") || "0");
+    if (sbv > 0) { sb.textContent = `🏆 ${sbv}`; sb.classList.remove("hidden"); } else sb.classList.add("hidden");
+  }
+
+  function updateStatusBar() {
+    if (currentMode === "speed") {
+      statusBar.classList.remove("hidden"); statusTimer.classList.remove("hidden"); statusScore.classList.remove("hidden");
+      $("score-text").textContent = modeWordsSolved;
+      const m = Math.floor(speedTimeLeft / 60), s = speedTimeLeft % 60;
+      $("timer-text").textContent = `${m}:${String(s).padStart(2, "0")}`;
+    } else if (currentMode === "endless") {
+      statusBar.classList.remove("hidden"); statusScore.classList.remove("hidden");
+      $("score-text").textContent = modeWordsSolved;
     }
   }
 
-  function showStatsModal() {
-    const stats = getStats();
-    const winPct = stats.played ? Math.round((stats.won / stats.played) * 100) : 0;
+  // ============ Mode: Daily ============
+  function startDaily() {
+    currentMode = "daily"; targetWord = getDailyWord(); resetBoard();
+    showGame("Көнлек сүз");
+    const saved = localStorage.getItem("suzle_daily");
+    if (saved) { const s = JSON.parse(saved); if (s.day === getDayNumber()) { guesses = s.guesses || []; gameOver = s.gameOver || false; currentRow = guesses.length; for (const g of guesses) updateLetterStatuses(g, evaluate(g)); updateBoard(); updateKeyboard(); } }
+  }
 
-    document.getElementById("stats-numbers").innerHTML = `
-      <div class="stat-item"><div class="stat-value">${stats.played}</div><div class="stat-label">Уен</div></div>
-      <div class="stat-item"><div class="stat-value">${winPct}</div><div class="stat-label">% Җиңү</div></div>
-      <div class="stat-item"><div class="stat-value">${stats.streak}</div><div class="stat-label">🔥 Эзлекле</div></div>
-      <div class="stat-item"><div class="stat-value">${stats.maxStreak}</div><div class="stat-label">Максимум</div></div>
+  function saveDailyState() { localStorage.setItem("suzle_daily", JSON.stringify({ day: getDayNumber(), guesses, gameOver })); }
+
+  function getDailyStats() { const s = localStorage.getItem("suzle_daily_stats"); return s ? JSON.parse(s) : { played: 0, won: 0, streak: 0, maxStreak: 0, dist: [0,0,0,0,0,0] }; }
+
+  function saveDailyStats(won, attempts) {
+    const s = getDailyStats(); s.played++;
+    if (won) { s.won++; s.streak++; s.maxStreak = Math.max(s.maxStreak, s.streak); s.dist[attempts - 1]++; } else s.streak = 0;
+    localStorage.setItem("suzle_daily_stats", JSON.stringify(s));
+  }
+
+  async function saveResultToServer(won, attempts) {
+    if (!tgUser) return;
+    const score = won ? (SCORE_MAP[attempts] || 10) : 0;
+    await sbFetch("wordle_results", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates" }, body: { tg_id: tgUser.id, day_number: getDayNumber(), attempts: won ? attempts : MAX_GUESSES, won } });
+    const ds = getDailyStats();
+    await sbFetch(`wordle_players?tg_id=eq.${tgUser.id}`, { method: "PATCH", body: { score: (await getPlayerField("score")) + score, streak: ds.streak, max_streak: ds.maxStreak, games_played: ds.played, games_won: ds.won } });
+  }
+
+  function showDailyStats() {
+    const s = getDailyStats(); const pct = s.played ? Math.round(s.won / s.played * 100) : 0;
+    const maxD = Math.max(...s.dist, 1);
+    $("stats-title").textContent = "Көнлек статистика";
+    $("stats-body").innerHTML = `
+      <div class="stats-numbers">
+        <div class="stat-item"><div class="stat-value">${s.played}</div><div class="stat-label">Уен</div></div>
+        <div class="stat-item"><div class="stat-value">${pct}</div><div class="stat-label">% Җиңү</div></div>
+        <div class="stat-item"><div class="stat-value">${s.streak}</div><div class="stat-label">🔥 Эзлекле</div></div>
+        <div class="stat-item"><div class="stat-value">${s.maxStreak}</div><div class="stat-label">Максимум</div></div>
+      </div>
+      <div class="stats-bars">${s.dist.map((c, i) => `<div class="bar-row"><div class="bar-label">${i+1}</div><div class="bar${gameOver && guesses.length === i+1 ? " highlight" : ""}" style="width:${Math.max(c/maxD*100, 8)}%">${c}</div></div>`).join("")}</div>
     `;
-
-    const maxDist = Math.max(...stats.dist, 1);
-    document.getElementById("stats-bars").innerHTML = stats.dist.map((count, i) => {
-      const width = Math.max((count / maxDist) * 100, 8);
-      const hl = gameOver && guesses.length === i + 1 ? " highlight" : "";
-      return `<div class="bar-row"><div class="bar-label">${i+1}</div><div class="bar${hl}" style="width:${width}%">${count}</div></div>`;
-    }).join("");
-
-    // Achievements
-    const achHTML = ACHIEVEMENTS.map(a => {
-      const unlocked = a.check(stats);
-      return `<div class="ach-badge ${unlocked ? "" : "locked"}" title="${a.name}">${a.icon}</div>`;
-    }).join("");
-    document.getElementById("achievements-display").innerHTML = `<h3>🏆 Казанышлар</h3><div class="ach-badges">${achHTML}</div>`;
-
-    // Timer
-    const now = new Date(), tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0,0,0,0);
-    const diff = tomorrow - now;
-    const h = String(Math.floor(diff/3600000)).padStart(2,"0");
-    const m = String(Math.floor((diff%3600000)/60000)).padStart(2,"0");
-    const s = String(Math.floor((diff%60000)/1000)).padStart(2,"0");
-    document.getElementById("stats-timer").innerHTML = `<div class="label">Киләсе сүзгә кадәр</div><div class="time">${h}:${m}:${s}</div>`;
-
-    const shareBtn = document.getElementById("btn-share");
-    if (gameOver) { shareBtn.classList.remove("hidden"); shareBtn.onclick = shareResult; }
-    else shareBtn.classList.add("hidden");
-
-    modalStats.classList.remove("hidden");
+    $("btn-share").classList.toggle("hidden", !gameOver); $("btn-share").onclick = shareDaily;
+    $("btn-play-again").classList.add("hidden");
+    $("modal-stats").classList.remove("hidden");
   }
 
-  function shareResult() {
-    const day = isChallenge ? "⚔️" : `#${getDayNumber()}`;
-    const won = guesses[guesses.length - 1] === targetWord;
-    const score = won ? `${guesses.length}/6` : "X/6";
-    let text = `Сүзле ${day} ${score}\n\n`;
-    for (const guess of guesses) {
-      text += evaluate(guess).map(r => r === "correct" ? "🟩" : r === "present" ? "🟨" : "⬛").join("") + "\n";
-    }
+  function shareDaily() {
+    const won = guesses.length > 0 && guesses[guesses.length - 1] === targetWord;
+    let text = `Сүзле #${getDayNumber()} ${won ? guesses.length + "/6" : "X/6"}\n\n`;
+    for (const g of guesses) text += evaluate(g).map(r => r === "correct" ? "🟩" : r === "present" ? "🟨" : "⬛").join("") + "\n";
     text += "\n@tatarcha_wordle_bot";
-    if (navigator.share) navigator.share({ text });
-    else if (navigator.clipboard) { navigator.clipboard.writeText(text); showToast("Күчерелде!"); }
+    if (navigator.share) navigator.share({ text }); else if (navigator.clipboard) { navigator.clipboard.writeText(text); showToast("Күчерелде!"); }
+  }
+
+  // ============ Mode: Endless ============
+  function startEndless() {
+    currentMode = "endless"; modeWordsSolved = 0; usedWords.clear();
+    targetWord = getRandomWord(); resetBoard();
+    showGame("♾️ Чиксез"); updateStatusBar();
+  }
+
+  function endEndless() {
+    if (speedTimer) { clearInterval(speedTimer); speedTimer = null; }
+    const best = parseInt(localStorage.getItem("suzle_endless_best") || "0");
+    if (modeWordsSolved > best) localStorage.setItem("suzle_endless_best", String(modeWordsSolved));
+    if (tgUser && modeWordsSolved > best) sbFetch(`wordle_players?tg_id=eq.${tgUser.id}`, { method: "PATCH", body: { endless_best: modeWordsSolved } });
+    showSimpleResult("♾️ Чиксез", `${modeWordsSolved} сүз таптыгыз!`, true);
+  }
+
+  // ============ Mode: Speed ============
+  function startSpeed() {
+    currentMode = "speed"; modeWordsSolved = 0; speedTimeLeft = 300; usedWords.clear();
+    targetWord = getRandomWord(); resetBoard();
+    showGame("⚡ Тиз уен"); updateStatusBar();
+    speedTimer = setInterval(() => {
+      speedTimeLeft--;
+      updateStatusBar();
+      if (speedTimeLeft <= 0) { clearInterval(speedTimer); speedTimer = null; gameOver = true; endSpeed(); }
+    }, 1000);
+  }
+
+  function endSpeed() {
+    const best = parseInt(localStorage.getItem("suzle_speed_best") || "0");
+    if (modeWordsSolved > best) localStorage.setItem("suzle_speed_best", String(modeWordsSolved));
+    if (tgUser) {
+      sbFetch("wordle_speed_results", { method: "POST", body: { tg_id: tgUser.id, words_solved: modeWordsSolved, score: modeWordsSolved * 50 } });
+      if (modeWordsSolved > best) sbFetch(`wordle_players?tg_id=eq.${tgUser.id}`, { method: "PATCH", body: { speed_best: modeWordsSolved } });
+    }
+    showSimpleResult("⚡ Тиз уен", `${modeWordsSolved} сүз таптыгыз!`, true);
+  }
+
+  // ============ Mode: Challenge ============
+  async function startChallenge(cid) {
+    currentMode = "challenge";
+    const data = await sbFetch(`wordle_challenges?id=eq.${cid}&select=word,status,from_username`);
+    if (!data || !data[0]) { showToast("Биремә табылмады", 2000); showHome(); return; }
+    if (data[0].status === "completed") { showToast("Бу биремә инде башкарылган", 2000); showHome(); return; }
+    targetWord = data[0].word; resetBoard();
+    showGame(`⚔️ ${data[0].from_username || "Дус"} биремәсе`);
+  }
+
+  async function saveChallengeResult(won, attempts) {
+    if (!challengeId) return;
+    await sbFetch(`wordle_challenges?id=eq.${challengeId}`, { method: "PATCH", body: { attempts, won, status: "completed", to_tg_id: tgUser?.id } });
+  }
+
+  // ============ Mode: Duel ============
+  async function startDuel() {
+    const modal = $("modal-duel"); modal.classList.remove("hidden");
+    $("duel-username").value = ""; $("duel-status").textContent = "";
+  }
+
+  async function joinDuel(did) {
+    currentMode = "duel";
+    const data = await sbFetch(`wordle_duels?id=eq.${did}&select=*`);
+    if (!data || !data[0]) { showToast("Дуэль табылмады", 2000); showHome(); return; }
+    if (data[0].status === "completed") { showToast("Бу дуэль инде тәмамланган", 2000); showHome(); return; }
+    targetWord = data[0].word;
+    await sbFetch(`wordle_duels?id=eq.${did}`, { method: "PATCH", body: { player2_tg_id: tgUser?.id, player2_username: tgUser?.username || "", status: "active" } });
+    resetBoard(); duelStartTime = Date.now();
+    showGame("🎯 Дуэль");
+  }
+
+  async function saveDuelResult(won, attempts, timeMs) {
+    if (!duelId || !tgUser) return;
+    const data = await sbFetch(`wordle_duels?id=eq.${duelId}&select=*`);
+    if (!data || !data[0]) return;
+    const d = data[0];
+    const isP1 = d.player1_tg_id === tgUser.id;
+    const update = isP1 ? { player1_attempts: attempts, player1_time_ms: timeMs } : { player2_attempts: attempts, player2_time_ms: timeMs };
+    await sbFetch(`wordle_duels?id=eq.${duelId}`, { method: "PATCH", body: update });
+  }
+
+  // ============ Challenge sending (from home) ============
+  $("btn-send-challenge").addEventListener("click", async () => {
+    const word = $("challenge-word").value.trim().toLowerCase();
+    const username = $("challenge-username").value.trim().replace("@", "");
+    const st = $("challenge-status");
+    if (word.length !== 5) { st.className = "challenge-status error"; st.textContent = "5 хәреф кирәк!"; return; }
+    if (!VALID_GUESSES.has(word) && !ANSWERS.includes(word)) { st.className = "challenge-status error"; st.textContent = "Сүзлектә юк"; return; }
+    if (!username) { st.className = "challenge-status error"; st.textContent = "@username кирәк!"; return; }
+    if (!tgUser) { st.className = "challenge-status error"; st.textContent = "Telegram аша кереп языгыз"; return; }
+    st.className = "challenge-status"; st.textContent = "Җибәрелә...";
+    const res = await sbFetch("wordle_challenges", { method: "POST", prefer: "return=representation", body: { from_tg_id: tgUser.id, from_username: tgUser.username || tgUser.first_name || "", to_username: username, word } });
+    if (!res || !res[0]) { st.className = "challenge-status error"; st.textContent = "Хата булды"; return; }
+    const cid = res[0].id;
+    const userData = await sbFetch(`wordle_players?username=eq.${username}&select=tg_id`);
+    if (userData && userData.length > 0) {
+      const fid = userData[0].tg_id;
+      const curl = `https://almazf318.github.io/tatarcha-wordle/?challenge=${cid}`;
+      try {
+        const r = await (await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: fid, text: `⚔️ @${tgUser.username || tgUser.first_name} сезгә сүз бирде!`, reply_markup: { inline_keyboard: [[{ text: "🎯 Табарга!", web_app: { url: curl } }]] } }) })).json();
+        if (r.ok) { st.className = "challenge-status success"; st.textContent = "✅ Дусыңызга җибәрелде!"; return; }
+      } catch {}
+    }
+    const link = `https://t.me/tatarcha_wordle_bot?start=challenge_${cid}`;
+    if (navigator.clipboard) await navigator.clipboard.writeText(link);
+    st.className = "challenge-status success";
+    st.textContent = userData?.length ? "⚠️ Җибәреп булмады. Сылтама күчерелде!" : "⚠️ Кулланучы ботта юк. Сылтама күчерелде!";
+  });
+
+  // Duel sending
+  $("btn-send-duel").addEventListener("click", async () => {
+    const username = $("duel-username").value.trim().replace("@", "");
+    const st = $("duel-status");
+    if (!username) { st.className = "challenge-status error"; st.textContent = "@username кирәк!"; return; }
+    if (!tgUser) { st.className = "challenge-status error"; st.textContent = "Telegram аша кереп языгыз"; return; }
+    st.className = "challenge-status"; st.textContent = "Булдырыла...";
+    const word = getRandomWord();
+    const res = await sbFetch("wordle_duels", { method: "POST", prefer: "return=representation", body: { word, player1_tg_id: tgUser.id, player1_username: tgUser.username || "" } });
+    if (!res || !res[0]) { st.className = "challenge-status error"; st.textContent = "Хата булды"; return; }
+    const did = res[0].id;
+    // Try to send to friend
+    const userData = await sbFetch(`wordle_players?username=eq.${username}&select=tg_id`);
+    if (userData && userData.length > 0) {
+      const fid = userData[0].tg_id;
+      const durl = `https://almazf318.github.io/tatarcha-wordle/?duel=${did}`;
+      try {
+        const r = await (await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: fid, text: `🎯 @${tgUser.username || tgUser.first_name} сезне дуэльгә чакыра!`, reply_markup: { inline_keyboard: [[{ text: "⚔️ Кабул итү!", web_app: { url: durl } }]] } }) })).json();
+        if (r.ok) { st.className = "challenge-status success"; st.textContent = "✅ Чакыру җибәрелде!"; $("modal-duel").classList.add("hidden"); currentMode = "duel"; targetWord = word; resetBoard(); duelStartTime = Date.now(); showGame("🎯 Дуэль"); return; }
+      } catch {}
+    }
+    const link = `https://t.me/tatarcha_wordle_bot?start=duel_${did}`;
+    if (navigator.clipboard) await navigator.clipboard.writeText(link);
+    st.className = "challenge-status success"; st.textContent = "⚠️ Сылтама күчерелде — дусыңызга җибәрегез!";
+    // Start own game
+    setTimeout(() => { $("modal-duel").classList.add("hidden"); currentMode = "duel"; targetWord = word; resetBoard(); duelStartTime = Date.now(); showGame("🎯 Дуэль"); }, 1500);
+  });
+
+  // ============ Simple result modal ============
+  function showSimpleResult(title, text, playAgain = false) {
+    $("stats-title").textContent = title;
+    $("stats-body").innerHTML = `<div class="result-big"><div class="val">${text}</div></div>`;
+    $("btn-share").classList.add("hidden");
+    const pa = $("btn-play-again");
+    if (playAgain) { pa.classList.remove("hidden"); pa.onclick = () => { $("modal-stats").classList.add("hidden"); if (currentMode === "endless") startEndless(); else if (currentMode === "speed") startSpeed(); }; }
+    else pa.classList.add("hidden");
+    $("modal-stats").classList.remove("hidden");
   }
 
   // ============ Leaderboard ============
-  document.getElementById("btn-leaderboard").addEventListener("click", async () => {
-    modalLB.classList.remove("hidden");
-    const list = document.getElementById("leaderboard-list");
-    list.innerHTML = '<div class="loader">Йөкләнә...</div>';
-    const data = await getLeaderboard();
+  btnLB.addEventListener("click", async () => {
+    $("modal-leaderboard").classList.remove("hidden");
+    const list = $("leaderboard-list"); list.innerHTML = '<div class="loader">Йөкләнә...</div>';
+    const data = await sbFetch("wordle_players?select=tg_id,username,first_name,score,streak&order=score.desc&limit=20");
     if (!data || data.length === 0) { list.innerHTML = '<div class="loader">Әлегә буш</div>'; return; }
+    const medals = ["🥇","🥈","🥉"];
     list.innerHTML = data.map((p, i) => {
-      const rankClass = i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : "";
-      const medals = ["🥇","🥈","🥉"];
-      const rank = i < 3 ? medals[i] : i + 1;
       const isMe = tgUser && p.tg_id === tgUser.id;
-      const name = p.first_name || p.username || "Билгесез";
-      return `<div class="lb-row ${isMe ? "me" : ""}">
-        <div class="lb-rank ${rankClass}">${rank}</div>
-        <div class="lb-name">${name}${p.streak > 0 ? ` 🔥${p.streak}` : ""}</div>
-        <div class="lb-score">${p.score}</div>
-      </div>`;
+      return `<div class="lb-row ${isMe?"me":""}"><div class="lb-rank ${i<3?"top"+(i+1):""}">${i<3?medals[i]:i+1}</div><div class="lb-name">${p.first_name||p.username||"Билгесез"}${p.streak>0?" 🔥"+p.streak:""}</div><div class="lb-score">${p.score}</div></div>`;
     }).join("");
   });
 
-  // ============ Challenge ============
-  document.getElementById("btn-challenge").addEventListener("click", () => {
-    modalChallenge.classList.remove("hidden");
-    document.getElementById("challenge-word").value = "";
-    document.getElementById("challenge-username").value = "";
-    document.getElementById("challenge-status").textContent = "";
-  });
+  // ============ Helper ============
+  async function getPlayerField(field) {
+    if (!tgUser) return 0;
+    const d = await sbFetch(`wordle_players?tg_id=eq.${tgUser.id}&select=${field}`);
+    return d?.[0]?.[field] || 0;
+  }
 
-  document.getElementById("btn-send-challenge").addEventListener("click", async () => {
-    const word = document.getElementById("challenge-word").value.trim().toLowerCase();
-    const username = document.getElementById("challenge-username").value.trim().replace("@", "");
-    const statusEl = document.getElementById("challenge-status");
-
-    if (word.length !== 5) { statusEl.className = "challenge-status error"; statusEl.textContent = "5 хәреф кирәк!"; return; }
-    if (!VALID_GUESSES.has(word) && !ANSWERS.includes(word)) { statusEl.className = "challenge-status error"; statusEl.textContent = "Сүзлектә юк"; return; }
-    if (!username) { statusEl.className = "challenge-status error"; statusEl.textContent = "@username кирәк!"; return; }
-    if (!tgUser) { statusEl.className = "challenge-status error"; statusEl.textContent = "Telegram аша кереп языгыз"; return; }
-
-    statusEl.className = "challenge-status"; statusEl.textContent = "Җибәрелә...";
-
-    // Save challenge to Supabase
-    const res = await sbFetch("wordle_challenges", {
-      method: "POST",
-      prefer: "return=representation",
-      body: {
-        from_tg_id: tgUser.id,
-        from_username: tgUser.username || tgUser.first_name || "",
-        to_username: username,
-        word: word,
-      },
+  // ============ Mode selection ============
+  document.querySelectorAll(".mode-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const mode = card.dataset.mode;
+      if (mode === "daily") startDaily();
+      else if (mode === "endless") startEndless();
+      else if (mode === "speed") startSpeed();
+      else if (mode === "challenge") { $("modal-challenge").classList.remove("hidden"); $("challenge-word").value = ""; $("challenge-username").value = ""; $("challenge-status").textContent = ""; }
+      else if (mode === "duel") startDuel();
     });
-
-    if (res && res[0]) {
-      const cid = res[0].id;
-
-      // Look up friend's tg_id by username
-      const userData = await sbFetch(`wordle_players?username=eq.${username}&select=tg_id`);
-      if (!userData || userData.length === 0) {
-        statusEl.className = "challenge-status error";
-        statusEl.textContent = "Бу кулланучы ботка /start язмаган";
-        return;
-      }
-
-      const friendTgId = userData[0].tg_id;
-      const challengeUrl = `https://almazf318.github.io/tatarcha-wordle/?challenge=${cid}`;
-      const fromName = tgUser.username ? `@${tgUser.username}` : tgUser.first_name;
-
-      // Send message via bot
-      try {
-        const botRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: friendTgId,
-            text: `⚔️ ${fromName} сезгә сүз бирде! Таба аласызмы?`,
-            parse_mode: "HTML",
-            reply_markup: {
-              inline_keyboard: [[{
-                text: "🎯 Табарга!",
-                web_app: { url: challengeUrl }
-              }]]
-            }
-          }),
-        });
-        const botData = await botRes.json();
-        if (botData.ok) {
-          statusEl.className = "challenge-status success";
-          statusEl.textContent = "✅ Дусыңызга җибәрелде!";
-        } else {
-          throw new Error(botData.description);
-        }
-      } catch (e) {
-        // Fallback: share link
-        const link = `https://t.me/tatarcha_wordle_bot?start=challenge_${cid}`;
-        if (navigator.clipboard) await navigator.clipboard.writeText(link);
-        statusEl.className = "challenge-status success";
-        statusEl.textContent = "⚠️ Турыдан җибәреп булмады. Сылтама күчерелде — дусыңызга җибәрегез!";
-      }
-    } else {
-      statusEl.className = "challenge-status error";
-      statusEl.textContent = "Хата булды";
-    }
   });
 
-  // ============ Load challenge word ============
-  async function loadChallenge() {
-    if (!challengeId) return;
-    const data = await sbFetch(`wordle_challenges?id=eq.${challengeId}&select=word,status`);
-    if (data && data[0]) {
-      if (data[0].status === "completed") { showToast("Бу биремә инде башкарылган", 2000); return; }
-      challengeWord = data[0].word;
-      targetWord = challengeWord;
-      isChallenge = true;
-      // Reset state for challenge
-      guesses = [];
-      currentGuess = "";
-      gameOver = false;
-      currentRow = 0;
-      Object.keys(letterStatus).forEach(k => delete letterStatus[k]);
-      createBoard();
-      createKeyboard();
-      showToast("⚔️ Дус биремәсе!", 2000);
-    }
-  }
+  // Back button
+  btnBack.addEventListener("click", showHome);
+  btnStats.addEventListener("click", showDailyStats);
 
-  // ============ Save/Load state ============
-  function saveState() {
-    if (isChallenge) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ day: getDayNumber(), guesses, gameOver }));
-  }
-
-  function loadState() {
-    if (isChallenge) return false;
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return false;
-    const state = JSON.parse(saved);
-    if (state.day !== getDayNumber()) { localStorage.removeItem(STORAGE_KEY); return false; }
-    guesses = state.guesses || [];
-    gameOver = state.gameOver || false;
-    currentRow = guesses.length;
-    for (const guess of guesses) { updateLetterStatuses(guess, evaluate(guess)); }
-    return true;
-  }
-
-  // ============ Modals ============
-  document.getElementById("btn-info").addEventListener("click", () => modalInfo.classList.remove("hidden"));
-  document.getElementById("btn-stats").addEventListener("click", showStatsModal);
-
-  document.querySelectorAll(".modal-close").forEach(btn => {
-    btn.addEventListener("click", () => btn.closest(".modal").classList.add("hidden"));
-  });
-  document.querySelectorAll(".modal").forEach(m => {
-    m.addEventListener("click", e => { if (e.target === m) m.classList.add("hidden"); });
-  });
+  // Modals
+  document.querySelectorAll(".modal-close").forEach(b => b.addEventListener("click", () => b.closest(".modal").classList.add("hidden")));
+  document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => { if (e.target === m) m.classList.add("hidden"); }));
 
   // Physical keyboard
   document.addEventListener("keydown", e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const anyModal = [modalInfo, modalStats, modalLB, modalChallenge].some(m => !m.classList.contains("hidden"));
+    if (screenGame.classList.contains("hidden")) return;
+    const anyModal = document.querySelector(".modal:not(.hidden)");
     if (anyModal) return;
     if (e.key === "Enter") handleKey("ENTER");
     else if (e.key === "Backspace") handleKey("⌫");
@@ -585,23 +499,11 @@
 
   // ============ Init ============
   async function init() {
-    createBoard();
-    createKeyboard();
-
-    if (challengeId) {
-      await loadChallenge();
-    } else {
-      const restored = loadState();
-      if (restored) { updateBoard(); updateKeyboard(); }
-    }
-
-    updateStreakBanner();
     syncPlayer();
-
-    if (!localStorage.getItem("suzle_visited")) {
-      setTimeout(() => modalInfo.classList.remove("hidden"), 500);
-      localStorage.setItem("suzle_visited", "1");
-    }
+    if (challengeId) { await startChallenge(challengeId); }
+    else if (duelId) { await joinDuel(duelId); }
+    else { showHome(); }
+    if (!localStorage.getItem("suzle_visited")) { setTimeout(() => $("modal-info").classList.remove("hidden"), 500); localStorage.setItem("suzle_visited", "1"); }
   }
 
   init();
