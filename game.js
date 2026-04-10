@@ -448,10 +448,12 @@
 
   document.getElementById("btn-send-challenge").addEventListener("click", async () => {
     const word = document.getElementById("challenge-word").value.trim().toLowerCase();
+    const username = document.getElementById("challenge-username").value.trim().replace("@", "");
     const statusEl = document.getElementById("challenge-status");
 
     if (word.length !== 5) { statusEl.className = "challenge-status error"; statusEl.textContent = "5 хәреф кирәк!"; return; }
     if (!VALID_GUESSES.has(word) && !ANSWERS.includes(word)) { statusEl.className = "challenge-status error"; statusEl.textContent = "Сүзлектә юк"; return; }
+    if (!username) { statusEl.className = "challenge-status error"; statusEl.textContent = "@username кирәк!"; return; }
     if (!tgUser) { statusEl.className = "challenge-status error"; statusEl.textContent = "Telegram аша кереп языгыз"; return; }
 
     statusEl.className = "challenge-status"; statusEl.textContent = "Җибәрелә...";
@@ -463,31 +465,56 @@
       body: {
         from_tg_id: tgUser.id,
         from_username: tgUser.username || tgUser.first_name || "",
-        to_username: "",
+        to_username: username,
         word: word,
       },
     });
 
     if (res && res[0]) {
       const cid = res[0].id;
-      const link = `https://t.me/tatarcha_wordle_bot?start=challenge_${cid}`;
-      const shareText = `⚔️ Сүзле биремәсе! Мин сиңа сүз бирдем — таба аласыңмы?\n\n🎯 ${link}`;
 
-      // Try native share, fallback to copy
-      if (navigator.share) {
-        try {
-          await navigator.share({ text: shareText });
+      // Look up friend's tg_id by username
+      const userData = await sbFetch(`wordle_players?username=eq.${username}&select=tg_id`);
+      if (!userData || userData.length === 0) {
+        statusEl.className = "challenge-status error";
+        statusEl.textContent = "Бу кулланучы ботка /start язмаган";
+        return;
+      }
+
+      const friendTgId = userData[0].tg_id;
+      const challengeUrl = `https://almazf318.github.io/tatarcha-wordle/?challenge=${cid}`;
+      const fromName = tgUser.username ? `@${tgUser.username}` : tgUser.first_name;
+
+      // Send message via bot
+      try {
+        const botRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: friendTgId,
+            text: `⚔️ ${fromName} сезгә сүз бирде! Таба аласызмы?`,
+            parse_mode: "HTML",
+            reply_markup: {
+              inline_keyboard: [[{
+                text: "🎯 Табарга!",
+                web_app: { url: challengeUrl }
+              }]]
+            }
+          }),
+        });
+        const botData = await botRes.json();
+        if (botData.ok) {
           statusEl.className = "challenge-status success";
-          statusEl.textContent = "✅ Уртаклашылды!";
-        } catch {
-          await navigator.clipboard?.writeText(shareText);
-          statusEl.className = "challenge-status success";
-          statusEl.textContent = "✅ Сылтама күчерелде — дусыңызга җибәрегез!";
+          statusEl.textContent = "✅ Дусыңызга җибәрелде!";
+        } else {
+          throw new Error(botData.description);
         }
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(shareText);
+      } catch (e) {
+        // Fallback: share link
+        const link = `https://t.me/tatarcha_wordle_bot?start=challenge_${cid}`;
+        if (navigator.clipboard) await navigator.clipboard.writeText(link);
         statusEl.className = "challenge-status success";
-        statusEl.textContent = "✅ Сылтама күчерелде — дусыңызга җибәрегез!";
+        statusEl.textContent = "⚠️ Турыдан җибәреп булмады. Сылтама күчерелде — дусыңызга җибәрегез!";
       }
     } else {
       statusEl.className = "challenge-status error";
