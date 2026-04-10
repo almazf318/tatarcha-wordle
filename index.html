@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="tt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Сүзле — Татарча Wordle</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="header-side">
+        <button id="btn-info" class="icon-btn" aria-label="Info">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </button>
+      </div>
+      <div class="header-title">
+        <h1>СҮЗЛЕ</h1>
+        <span class="subtitle">татарча wordle</span>
+      </div>
+      <div class="header-side">
+        <button id="btn-stats" class="icon-btn" aria-label="Stats">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div id="board"></div>
+    </main>
+
+    <div id="keyboard"></div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Info Modal -->
+    <div id="modal-info" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close">&times;</button>
+        <h2>Ничек уйнарга?</h2>
+        <p>Сүзне 6 тапкыр эчендә табыгыз. Һәр тапкыр 5 хәрефле татарча сүз языгыз.</p>
+        <div class="example">
+          <div class="mini-row">
+            <div class="mini-tile correct">К</div>
+            <div class="mini-tile">И</div>
+            <div class="mini-tile">Т</div>
+            <div class="mini-tile">А</div>
+            <div class="mini-tile">П</div>
+          </div>
+          <p><strong>К</strong> — дөрес урында (яшел)</p>
+        </div>
+        <div class="example">
+          <div class="mini-row">
+            <div class="mini-tile">Б</div>
+            <div class="mini-tile present">А</div>
+            <div class="mini-tile">Л</div>
+            <div class="mini-tile">Ы</div>
+            <div class="mini-tile">К</div>
+          </div>
+          <p><strong>А</strong> — сүздә бар, ләкин башка урында (сары)</p>
+        </div>
+        <div class="example">
+          <div class="mini-row">
+            <div class="mini-tile">С</div>
+            <div class="mini-tile">А</div>
+            <div class="mini-tile">Б</div>
+            <div class="mini-tile absent">Ы</div>
+            <div class="mini-tile">Н</div>
+          </div>
+          <p><strong>Ы</strong> — сүздә юк (соры)</p>
+        </div>
+        <p class="info-footer">Көн саен яңа сүз!</p>
+      </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div id="modal-stats" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close">&times;</button>
+        <h2>Статистика</h2>
+        <div id="stats-numbers" class="stats-numbers"></div>
+        <div id="stats-bars" class="stats-bars"></div>
+        <div id="stats-timer" class="stats-timer"></div>
+        <button id="btn-share" class="share-btn hidden">Уртаклашу</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="words.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
