@@ -448,12 +448,10 @@
 
   document.getElementById("btn-send-challenge").addEventListener("click", async () => {
     const word = document.getElementById("challenge-word").value.trim().toLowerCase();
-    const username = document.getElementById("challenge-username").value.trim().replace("@", "");
     const statusEl = document.getElementById("challenge-status");
 
     if (word.length !== 5) { statusEl.className = "challenge-status error"; statusEl.textContent = "5 хәреф кирәк!"; return; }
     if (!VALID_GUESSES.has(word) && !ANSWERS.includes(word)) { statusEl.className = "challenge-status error"; statusEl.textContent = "Сүзлектә юк"; return; }
-    if (!username) { statusEl.className = "challenge-status error"; statusEl.textContent = "@username кирәк!"; return; }
     if (!tgUser) { statusEl.className = "challenge-status error"; statusEl.textContent = "Telegram аша кереп языгыз"; return; }
 
     statusEl.className = "challenge-status"; statusEl.textContent = "Җибәрелә...";
@@ -465,34 +463,31 @@
       body: {
         from_tg_id: tgUser.id,
         from_username: tgUser.username || tgUser.first_name || "",
-        to_username: username,
+        to_username: "",
         word: word,
       },
     });
 
     if (res && res[0]) {
       const cid = res[0].id;
-      // Send message via bot
-      try {
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: `@${username}`,
-            text: `⚔️ @${tgUser.username || tgUser.first_name} сезгә сүз бирде! Табарга тырышыгыз!`,
-            reply_markup: {
-              inline_keyboard: [[{
-                text: "🎯 Табарга",
-                web_app: { url: `https://almazf318.github.io/tatarcha-wordle/?challenge=${cid}` }
-              }]]
-            }
-          }),
-        });
+      const link = `https://t.me/tatarcha_wordle_bot?start=challenge_${cid}`;
+      const shareText = `⚔️ Сүзле биремәсе! Мин сиңа сүз бирдем — таба аласыңмы?\n\n🎯 ${link}`;
+
+      // Try native share, fallback to copy
+      if (navigator.share) {
+        try {
+          await navigator.share({ text: shareText });
+          statusEl.className = "challenge-status success";
+          statusEl.textContent = "✅ Уртаклашылды!";
+        } catch {
+          await navigator.clipboard?.writeText(shareText);
+          statusEl.className = "challenge-status success";
+          statusEl.textContent = "✅ Сылтама күчерелде — дусыңызга җибәрегез!";
+        }
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shareText);
         statusEl.className = "challenge-status success";
-        statusEl.textContent = "✅ Җибәрелде!";
-      } catch {
-        statusEl.className = "challenge-status success";
-        statusEl.textContent = "✅ Биремә сакланды! Дусыңызга бот аша хәбәр итегез.";
+        statusEl.textContent = "✅ Сылтама күчерелде — дусыңызга җибәрегез!";
       }
     } else {
       statusEl.className = "challenge-status error";

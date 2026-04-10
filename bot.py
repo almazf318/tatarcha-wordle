@@ -13,6 +13,23 @@ WEBAPP_URL = "https://almazf318.github.io/tatarcha-wordle/"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if this is a challenge deep link
+    if context.args and context.args[0].startswith("challenge_"):
+        challenge_id = context.args[0].replace("challenge_", "")
+        challenge_url = f"{WEBAPP_URL}?challenge={challenge_id}"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎯 Табарга!", web_app=WebAppInfo(url=challenge_url))],
+        ])
+        await update.message.reply_text(
+            "⚔️ <b>Сезгә биремә бирделәр!</b>\n\n"
+            "Дусыгыз сезгә сүз бирде — таба аласызмы?\n"
+            "5 хәреф, 6 тапкыр. Уңышлар! 💪",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        return
+
+    # Normal welcome
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎯 Уйнарга", web_app=WebAppInfo(url=WEBAPP_URL))],
         [
