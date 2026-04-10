@@ -2,11 +2,11 @@
 <html lang="tt">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Сүзле — Татарча Wordle</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,19 +14,30 @@
     <header>
       <div class="header-side">
         <button id="btn-info" class="icon-btn" aria-label="Info">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         </button>
       </div>
       <div class="header-title">
         <h1>СҮЗЛЕ</h1>
-        <span class="subtitle">татарча wordle</span>
       </div>
-      <div class="header-side">
+      <div class="header-side header-right">
+        <button id="btn-challenge" class="icon-btn" aria-label="Challenge" title="Дуска биремә">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        </button>
+        <button id="btn-leaderboard" class="icon-btn" aria-label="Leaderboard" title="Рейтинг">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/><path d="M17 3H7l1 9c0 2.2 1.8 4 4 4s4-1.8 4-4l1-9z"/></svg>
+        </button>
         <button id="btn-stats" class="icon-btn" aria-label="Stats">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         </button>
       </div>
     </header>
+
+    <!-- Streak banner -->
+    <div id="streak-banner" class="streak-banner hidden">
+      <span class="streak-fire">🔥</span>
+      <span id="streak-count">0</span> көн эзлекле!
+    </div>
 
     <main>
       <div id="board"></div>
@@ -73,6 +84,16 @@
           </div>
           <p><strong>Ы</strong> — сүздә юк (соры)</p>
         </div>
+        <div class="info-achievements">
+          <h3>🏆 Казанышлар</h3>
+          <div class="achievement-list">
+            <div class="ach-item"><span class="ach-icon">⭐</span> Беренче җиңү</div>
+            <div class="ach-item"><span class="ach-icon">🔥</span> 7 көн эзлекле</div>
+            <div class="ach-item"><span class="ach-icon">🧠</span> 1 тапкырдан табу</div>
+            <div class="ach-item"><span class="ach-icon">💪</span> 30 көн эзлекле</div>
+            <div class="ach-item"><span class="ach-icon">👑</span> 100 уен</div>
+          </div>
+        </div>
         <p class="info-footer">Көн саен яңа сүз!</p>
       </div>
     </div>
@@ -84,8 +105,35 @@
         <h2>Статистика</h2>
         <div id="stats-numbers" class="stats-numbers"></div>
         <div id="stats-bars" class="stats-bars"></div>
+        <div id="achievements-display" class="achievements-display"></div>
         <div id="stats-timer" class="stats-timer"></div>
-        <button id="btn-share" class="share-btn hidden">Уртаклашу</button>
+        <button id="btn-share" class="share-btn hidden">📤 Уртаклашу</button>
+      </div>
+    </div>
+
+    <!-- Leaderboard Modal -->
+    <div id="modal-leaderboard" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close">&times;</button>
+        <h2>🏆 Рейтинг</h2>
+        <div id="leaderboard-list" class="leaderboard-list">
+          <div class="loader">Йөкләнә...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Challenge Modal -->
+    <div id="modal-challenge" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close">&times;</button>
+        <h2>⚔️ Дуска биремә</h2>
+        <p>Дусыңызга сүз бирегез — ул аны табарга тырышсын!</p>
+        <div class="challenge-form">
+          <input type="text" id="challenge-word" class="challenge-input" placeholder="5 хәрефле сүз" maxlength="5">
+          <input type="text" id="challenge-username" class="challenge-input" placeholder="@username">
+          <button id="btn-send-challenge" class="share-btn">Җибәрү ➤</button>
+          <div id="challenge-status" class="challenge-status"></div>
+        </div>
       </div>
     </div>
   </div>
