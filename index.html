@@ -7,7 +7,16 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
+  <script>
+    // Expand Mini App ASAP before any rendering
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      if (window.Telegram.WebApp.requestFullscreen) window.Telegram.WebApp.requestFullscreen();
+      window.Telegram.WebApp.disableVerticalSwipes();
+    }
+  </script>
 </head>
 <body>
   <div id="app">
@@ -143,7 +152,7 @@
     </div>
   </div>
 
-  <script src="words.js?v=4"></script>
-  <script src="game.js?v=4"></script>
+  <script src="words.js?v=5"></script>
+  <script src="game.js?v=5"></script>
 </body>
 </html>

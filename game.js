@@ -14,8 +14,7 @@
 
   // Telegram
   const tg = window.Telegram?.WebApp;
-  let tgUser = null;
-  if (tg) { tg.ready(); tg.expand(); tgUser = tg.initDataUnsafe?.user; }
+  let tgUser = tg?.initDataUnsafe?.user || null;
 
   // URL params
   const urlParams = new URLSearchParams(window.location.search);
