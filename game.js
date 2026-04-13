@@ -43,10 +43,6 @@
   const toastEl = $("toast");
   const screenHome = $("screen-home");
   const screenGame = $("screen-game");
-  const btnBack = $("btn-back");
-  const btnStats = $("btn-stats");
-  const btnLB = $("btn-leaderboard");
-  const headerText = $("header-text");
   const statusBar = $("game-status-bar");
   const statusTimer = $("status-timer");
   const statusScore = $("status-score");
@@ -208,19 +204,15 @@
   // ============ Screen Management ============
   function showHome() {
     screenHome.classList.remove("hidden"); screenGame.classList.add("hidden");
-    btnBack.classList.add("hidden"); btnStats.classList.add("hidden"); btnLB.classList.add("hidden");
-    headerText.textContent = "СҮЗЛЕ";
+    if (tg?.BackButton) tg.BackButton.hide();
     if (speedTimer) { clearInterval(speedTimer); speedTimer = null; }
     updateHomeBadges();
   }
 
   function showGame(modeName) {
     screenHome.classList.add("hidden"); screenGame.classList.remove("hidden");
-    btnBack.classList.remove("hidden");
-    headerText.textContent = modeName;
+    if (tg?.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(showHome); }
     statusBar.classList.add("hidden"); statusTimer.classList.add("hidden"); statusScore.classList.add("hidden"); statusStreak.classList.add("hidden");
-    if (currentMode === "daily") { btnStats.classList.remove("hidden"); btnLB.classList.remove("hidden"); }
-    else if (currentMode === "speed" || currentMode === "endless") { btnLB.classList.remove("hidden"); }
   }
 
   function updateHomeBadges() {
@@ -447,7 +439,7 @@
   }
 
   // ============ Leaderboard ============
-  btnLB.addEventListener("click", async () => {
+  $("btn-leaderboard-home")?.addEventListener("click", async () => {
     $("modal-leaderboard").classList.remove("hidden");
     const list = $("leaderboard-list"); list.innerHTML = '<div class="loader">Йөкләнә...</div>';
     const data = await sbFetch("wordle_players?select=tg_id,username,first_name,score,streak&order=score.desc&limit=20");
@@ -478,9 +470,8 @@
     });
   });
 
-  // Back button
-  btnBack.addEventListener("click", showHome);
-  btnStats.addEventListener("click", showDailyStats);
+  // Telegram back button handled in showGame/showHome
+  $("btn-info-home")?.addEventListener("click", () => $("modal-info").classList.remove("hidden"));
 
   // Modals
   document.querySelectorAll(".modal-close").forEach(b => b.addEventListener("click", () => b.closest(".modal").classList.add("hidden")));

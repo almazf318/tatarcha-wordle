@@ -56,9 +56,7 @@ body {
 
 /* Header */
 header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 10px; border-bottom: 1px solid var(--border);
-  min-height: 44px; flex-shrink: 0;
+  display: none;
 }
 .header-side { display: flex; align-items: center; gap: 2px; min-width: 44px; }
 .header-right { justify-content: flex-end; }
@@ -81,13 +79,21 @@ header h1 {
 /* ============ Home Screen ============ */
 #screen-home { padding-bottom: calc(16px + var(--safe-bottom)); }
 
-.home-hero { text-align: center; padding: 20px 16px 16px; }
+.home-hero { text-align: center; padding: 14px 16px 10px; }
 .home-logo {
-  font-size: 36px; font-weight: 900; letter-spacing: 6px;
+  font-size: 32px; font-weight: 900; letter-spacing: 6px;
   background: linear-gradient(135deg, var(--tatar-gold), #f0d878, var(--tatar-gold));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.home-sub { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); margin-top: 2px; }
+.home-sub { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); margin-top: 2px; }
+
+.home-actions { display: flex; gap: 8px; padding: 0 14px 12px; }
+.home-action-btn {
+  flex: 1; padding: 10px; background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-dim); font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.home-action-btn:active { background: var(--tatar-gold-dim); border-color: var(--tatar-gold); }
 
 .mode-list { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 16px; }
 
